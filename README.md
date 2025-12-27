@@ -16,9 +16,60 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `src/app/(user)/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Firebase setup
+
+1. Create a Firebase project and add a Web App.
+2. Enable Authentication:
+   - Email/Password (for real users)
+   - Anonymous (used as a fallback for guest submissions)
+3. Enable Cloud Firestore and Cloud Storage.
+4. Add the Firebase config to `.env.local`:
+   - `NEXT_PUBLIC_FIREBASE_API_KEY`
+   - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+   - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+   - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+   - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+   - `NEXT_PUBLIC_FIREBASE_APP_ID`
+5. Deploy security rules:
+   - `firebase deploy --only firestore:rules,storage`
+
+### Collections (recommended schema)
+
+- `repairs`
+  - `trackingCode` (string)
+  - `status` ("received" | "diagnosing" | "repairing" | "completed" | "rejected")
+  - `createdBy` (uid string)
+  - `createdAt` (ISO string)
+  - `updatedAt` (ISO string)
+  - `title`, `detail`, `category`, `preferredDate`, `vehicleModel`, `serialNumber`
+  - `contactName`, `contactPhone`, `contactEmail`
+  - `attachments` (array of { name, url, type })
+  - `timeline` (array of { status, updatedAt, note? })
+
+- `technicianNotices`
+  - `type` ("new-repair" | "status-update")
+  - `repairId`, `createdAt`, `seen`, `title`, `detail`
+
+- `users`
+  - `name`, `email`, `phone`, `address`
+  - `role` ("user" | "technician")
+
+- `supportFaqs`, `supportManuals`, `promotions`, `announcements`
+  - store help center + marketing content (public read, staff write)
+
+### Roles
+
+For technician access, create or update `users/{uid}` with `role: "technician"`.
+This can be done from the Firebase console (rules do not block admin console edits).
+
+### Seed initial collections
+
+Open `/backoffice` and click **Seed data** to create the base collections (support FAQs, manuals, promotions, announcements).
+The seed writes a `system/bootstrap` doc so it only runs once.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to load Chakra Petch and Kanit.
 
 ## Learn More
 
