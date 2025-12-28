@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   updateDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,8 +47,9 @@ export default function ManualManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
+    const firestore = db as Firestore;
     const manualQuery = query(
-      collection(db, "manuals"),
+      collection(firestore, "manuals"),
       orderBy("updatedAt", "desc"),
     );
     const unsubscribe = onSnapshot(manualQuery, (snapshot) => {
@@ -65,9 +67,10 @@ export default function ManualManager() {
       setMessage(lang === "th" ? "Firebase ยังไม่พร้อมใช้งาน" : "Firebase is not configured.");
       return;
     }
+    const firestore = db as Firestore;
     setMessage("");
     const now = new Date().toISOString();
-    await addDoc(collection(db, "manuals"), {
+    await addDoc(collection(firestore, "manuals"), {
       title: { th: form.titleTh, en: form.titleEn },
       summary: { th: form.summaryTh, en: form.summaryEn },
       link: form.link,
@@ -82,14 +85,16 @@ export default function ManualManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await deleteDoc(doc(db, "manuals", manualId));
+    const firestore = db as Firestore;
+    await deleteDoc(doc(firestore, "manuals", manualId));
   };
 
   const togglePublish = async (manual: ManualItem) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await updateDoc(doc(db, "manuals", manual.id), {
+    const firestore = db as Firestore;
+    await updateDoc(doc(firestore, "manuals", manual.id), {
       published: !manual.published,
       updatedAt: new Date().toISOString(),
     });

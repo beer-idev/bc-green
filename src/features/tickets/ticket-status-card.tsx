@@ -25,12 +25,12 @@ export default function TicketStatusCard({ ticket }: TicketStatusCardProps) {
   const { t } = useI18n();
   const categoryLabel =
     ticket.category === "repair" ? t("nav.repair") : ticket.category;
-  const steps = [
+  const steps: { key: TicketStatus; label: string }[] = [
     { key: "NEW", label: t("status.NEW") },
     { key: "CHECKING", label: t("status.CHECKING") },
     { key: "IN_PROGRESS", label: t("status.IN_PROGRESS") },
     { key: "DONE", label: t("status.DONE") },
-  ] as const;
+  ];
 
   return (
     <Link href={`/tickets/${ticket.id}`} className="block">

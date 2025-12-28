@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, type Firestore } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ type AuthMessage = {
   text: string;
 };
 
-export default function BackofficeLoginPage() {
+function BackofficeLoginInner() {
   const { t, lang } = useI18n();
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
@@ -65,7 +65,8 @@ export default function BackofficeLoginPage() {
         await showErrorAlert({ title: "Error", text });
         return;
       }
-      const snap = await getDoc(doc(db, "users", uid));
+      const firestore = db as Firestore;
+      const snap = await getDoc(doc(firestore, "users", uid));
       const role = snap.data()?.role as "admin" | "technician" | "user" | undefined;
       if (role !== "admin" && role !== "technician") {
         const text =
@@ -151,5 +152,13 @@ export default function BackofficeLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BackofficeLoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[--text-soft]">Loading...</div>}>
+      <BackofficeLoginInner />
+    </Suspense>
   );
 }

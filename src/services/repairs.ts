@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   updateDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { uploadLocalFiles } from "@/lib/uploads/client";
@@ -60,7 +61,8 @@ export async function createRepairRequest(
 
   const now = new Date().toISOString();
   const trackingCode = generateTrackingCode();
-  const docRef = await addDoc(collection(db, REPAIR_COLLECTION), {
+  const firestore = db as Firestore;
+  const docRef = await addDoc(collection(firestore, REPAIR_COLLECTION), {
     ...input,
     createdBy: user.uid,
     trackingCode,
@@ -83,12 +85,12 @@ export async function createRepairRequest(
   }));
 
   if (mappedAttachments.length) {
-    await updateDoc(doc(db, REPAIR_COLLECTION, docRef.id), {
+    await updateDoc(doc(firestore, REPAIR_COLLECTION, docRef.id), {
       attachments: mappedAttachments,
     });
   }
 
-  await addDoc(collection(db, NOTICE_COLLECTION), {
+  await addDoc(collection(firestore, NOTICE_COLLECTION), {
     type: "new-repair",
     repairId: docRef.id,
     createdAt: now,
@@ -104,7 +106,8 @@ export async function getRepairById(repairId: string) {
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
-  const snap = await getDoc(doc(db, REPAIR_COLLECTION, repairId));
+  const firestore = db as Firestore;
+  const snap = await getDoc(doc(firestore, REPAIR_COLLECTION, repairId));
   if (!snap.exists()) {
     return { ok: false, error: "Repair not found." };
   }
@@ -115,12 +118,15 @@ export async function listOpenRepairs(limitCount = 20) {
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
+  const firestore = db as Firestore;
   const snapshot = await getDocs(
-    query(collection(db, REPAIR_COLLECTION), orderBy("createdAt", "desc")),
+    query(collection(firestore, REPAIR_COLLECTION), orderBy("createdAt", "desc")),
   );
   const items = snapshot.docs
-    .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-    .filter((item) => STATUS_OPEN.includes(item.status as RepairStatus))
+    .map((docSnap) =>
+      mapRepairFromData({ id: docSnap.id, ...(docSnap.data() as Record<string, unknown>) }),
+    )
+    .filter((item) => STATUS_OPEN.includes(item.status))
     .slice(0, limitCount);
   return { ok: true, data: items };
 }
@@ -133,13 +139,14 @@ export async function updateRepairStatus(
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
+  const firestore = db as Firestore;
   const now = new Date().toISOString();
-  await updateDoc(doc(db, REPAIR_COLLECTION, repairId), {
+  await updateDoc(doc(firestore, REPAIR_COLLECTION, repairId), {
     status,
     updatedAt: now,
     timeline: arrayUnion({ status, updatedAt: now, note }),
   });
-  await addDoc(collection(db, NOTICE_COLLECTION), {
+  await addDoc(collection(firestore, NOTICE_COLLECTION), {
     type: "status-update",
     repairId,
     createdAt: now,

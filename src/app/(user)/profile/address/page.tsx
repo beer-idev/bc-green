@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc, type Firestore } from "firebase/firestore";
 import PageHeader from "@/components/sections/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,7 +37,8 @@ export default function ProfileAddressPage() {
       setHydrated(true);
       return;
     }
-    const ref = doc(db, "users", user.uid);
+    const firestore = db as Firestore;
+    const ref = doc(firestore, "users", user.uid);
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
@@ -63,7 +64,8 @@ export default function ProfileAddressPage() {
     setSaving(true);
     setError("");
     try {
-      const ref = doc(db, "users", user.uid);
+      const firestore = db as Firestore;
+      const ref = doc(firestore, "users", user.uid);
       const payload = {
         address: {
           line1: address.line1.trim(),
@@ -126,7 +128,9 @@ export default function ProfileAddressPage() {
         <Textarea
           value={address.line1}
           onChange={(event) =>
-            setAddress((prev) => ({ ...prev, line1: event.target.value }))
+            setAddress((prev) =>
+              prev ? { ...prev, line1: event.target.value } : prev,
+            )
           }
           placeholder={t("profile.editAddress")}
         />
@@ -134,14 +138,18 @@ export default function ProfileAddressPage() {
           <Input
             value={address.district}
             onChange={(event) =>
-              setAddress((prev) => ({ ...prev, district: event.target.value }))
+              setAddress((prev) =>
+                prev ? { ...prev, district: event.target.value } : prev,
+              )
             }
             placeholder={lang === "th" ? "เขต/อำเภอ" : "District"}
           />
           <Input
             value={address.province}
             onChange={(event) =>
-              setAddress((prev) => ({ ...prev, province: event.target.value }))
+              setAddress((prev) =>
+                prev ? { ...prev, province: event.target.value } : prev,
+              )
             }
             placeholder={lang === "th" ? "จังหวัด" : "Province"}
           />
@@ -149,7 +157,9 @@ export default function ProfileAddressPage() {
         <Input
           value={address.zip}
           onChange={(event) =>
-            setAddress((prev) => ({ ...prev, zip: event.target.value }))
+            setAddress((prev) =>
+              prev ? { ...prev, zip: event.target.value } : prev,
+            )
           }
           placeholder={lang === "th" ? "รหัสไปรษณีย์" : "Zip code"}
         />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, updateDoc, type Firestore } from "firebase/firestore";
 import PageHeader from "@/components/sections/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,7 +38,8 @@ export default function ProfileEditPage() {
       setHydrated(true);
       return;
     }
-    const ref = doc(db, "users", user.uid);
+    const firestore = db as Firestore;
+    const ref = doc(firestore, "users", user.uid);
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
@@ -64,7 +65,8 @@ export default function ProfileEditPage() {
     setSaving(true);
     setError("");
     try {
-      const ref = doc(db, "users", user.uid);
+      const firestore = db as Firestore;
+      const ref = doc(firestore, "users", user.uid);
       const payload = {
         displayName: form.displayName.trim(),
         phone: form.phone.trim(),

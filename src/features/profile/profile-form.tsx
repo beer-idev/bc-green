@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, type Firestore } from "firebase/firestore";
 import { Card } from "@/components/ui/card";
 import { useI18n } from "@/components/i18n-provider";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -29,7 +29,8 @@ export default function ProfileForm() {
       setProfile(buildProfileFromUser(user));
       return;
     }
-    const ref = doc(db, "users", user.uid);
+    const firestore = db as Firestore;
+    const ref = doc(firestore, "users", user.uid);
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {

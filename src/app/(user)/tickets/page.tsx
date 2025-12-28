@@ -14,7 +14,7 @@ import TicketHistoryList from "@/features/tickets/ticket-history-list";
 import { subscribeTicketsForUser } from "@/services/tickets";
 import type { Ticket } from "@/types/ticket";
 
-const ACTIVE_STATUSES = ["NEW", "CHECKING", "IN_PROGRESS"] as const;
+const ACTIVE_STATUSES: Ticket["status"][] = ["NEW", "CHECKING", "IN_PROGRESS"];
 
 export default function TicketStatusPage() {
   const { t, lang } = useI18n();

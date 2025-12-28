@@ -41,8 +41,10 @@ export const navItems = [
 
 export type NavItem = (typeof navItems)[number];
 
+type MatchRule = { path: string; exact?: boolean; exclude?: readonly string[] };
+
 export function isNavActive(pathname: string, item: NavItem) {
-  return item.match.some(({ path, exact, exclude }) => {
+  return item.match.some(({ path, exact, exclude }: MatchRule) => {
     if (exclude?.some((value) => pathname.startsWith(value))) {
       return false;
     }

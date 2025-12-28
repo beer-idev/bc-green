@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, type Firestore } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,8 +61,9 @@ export default function UserManager() {
       );
       return;
     }
+    const firestore = db as Firestore;
     const userQuery = query(
-      collection(db, "users"),
+      collection(firestore, "users"),
       orderBy("updatedAt", "desc"),
     );
     const unsubscribe = onSnapshot(

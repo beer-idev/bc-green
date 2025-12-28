@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ type AuthMessage = {
   text: string;
 };
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { t } = useI18n();
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -159,5 +159,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   updateDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,7 +47,11 @@ export default function FaqManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    const faqQuery = query(collection(db, "faqs"), orderBy("updatedAt", "desc"));
+    const firestore = db as Firestore;
+    const faqQuery = query(
+      collection(firestore, "faqs"),
+      orderBy("updatedAt", "desc"),
+    );
     const unsubscribe = onSnapshot(faqQuery, (snapshot) => {
       const data = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
@@ -62,13 +67,14 @@ export default function FaqManager() {
       setMessage(lang === "th" ? "Firebase ยังไม่พร้อมใช้งาน" : "Firebase is not configured.");
       return;
     }
+    const firestore = db as Firestore;
     setMessage("");
     const now = new Date().toISOString();
     const tags = form.tags
       .split(",")
       .map((tag) => tag.trim())
       .filter(Boolean);
-    await addDoc(collection(db, "faqs"), {
+    await addDoc(collection(firestore, "faqs"), {
       question: { th: form.questionTh, en: form.questionEn },
       answer: { th: form.answerTh, en: form.answerEn },
       tags,
@@ -83,14 +89,16 @@ export default function FaqManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await deleteDoc(doc(db, "faqs", faqId));
+    const firestore = db as Firestore;
+    await deleteDoc(doc(firestore, "faqs", faqId));
   };
 
   const togglePublish = async (faq: FaqItem) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await updateDoc(doc(db, "faqs", faq.id), {
+    const firestore = db as Firestore;
+    await updateDoc(doc(firestore, "faqs", faq.id), {
       published: !faq.published,
       updatedAt: new Date().toISOString(),
     });

@@ -8,6 +8,7 @@ import {
   updateDoc,
   doc,
   where,
+  type Firestore,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AppNotification } from "@/types/notification";
@@ -31,7 +32,7 @@ export function subscribeNotificationsForRole(
     return () => {};
   }
   const notificationQuery = query(
-    collection(db, NOTIFICATION_COLLECTION),
+    collection(db as Firestore, NOTIFICATION_COLLECTION),
     where("toRole", "==", role),
     orderBy("createdAt", "desc"),
   );
@@ -53,7 +54,7 @@ export async function markNotificationRead(notificationId: string) {
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
-  await updateDoc(doc(db, NOTIFICATION_COLLECTION, notificationId), {
+  await updateDoc(doc(db as Firestore, NOTIFICATION_COLLECTION, notificationId), {
     read: true,
   });
   return { ok: true };

@@ -53,7 +53,7 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
       );
       return;
     }
-    const ref = doc(db, "users", user.uid);
+    const ref = doc(db!, "users", user.uid);
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {

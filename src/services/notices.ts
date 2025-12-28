@@ -7,6 +7,7 @@ import {
   query,
   updateDoc,
   doc,
+  type Firestore,
 } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import type { AppNotification } from "@/types/notification";
@@ -25,7 +26,7 @@ export async function listTechnicianNotices(limitCount = 10) {
     return { ok: false, error: "Firebase is not configured." };
   }
   const snapshot = await getDocs(
-    query(collection(db, NOTICE_COLLECTION), orderBy("createdAt", "desc")),
+    query(collection(db as Firestore, NOTICE_COLLECTION), orderBy("createdAt", "desc")),
   );
   const items = snapshot.docs
     .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
@@ -38,6 +39,6 @@ export async function markNoticeSeen(noticeId: string) {
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
-  await updateDoc(doc(db, NOTICE_COLLECTION, noticeId), { read: true });
+  await updateDoc(doc(db as Firestore, NOTICE_COLLECTION, noticeId), { read: true });
   return { ok: true };
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, type Firestore } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -60,8 +60,9 @@ export default function TicketForm() {
         }
         return;
       }
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
+        try {
+          const firestore = db as Firestore;
+          const snap = await getDoc(doc(firestore, "users", user.uid));
         const data = snap.data() as
           | {
               address?: {

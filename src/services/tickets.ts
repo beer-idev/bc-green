@@ -12,6 +12,7 @@ import {
   query,
   updateDoc,
   where,
+  type Firestore,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { uploadLocalFiles } from "@/lib/uploads/client";
@@ -83,7 +84,8 @@ export async function createTicket(
   }
 
   try {
-    const profileSnap = await getDoc(doc(db, "users", user.uid));
+    const firestore = db as Firestore;
+    const profileSnap = await getDoc(doc(firestore, "users", user.uid));
     const profile = profileSnap.exists()
       ? (profileSnap.data() as {
           address?: {
@@ -110,7 +112,7 @@ export async function createTicket(
     const now = new Date().toISOString();
     const readableNo = generateReadableNo();
 
-    const docRef = await addDoc(collection(db, TICKET_COLLECTION), {
+    const docRef = await addDoc(collection(firestore, TICKET_COLLECTION), {
       ...input,
       readableNo,
       userId: user.uid,
@@ -124,13 +126,13 @@ export async function createTicket(
 
     const attachments = await uploadAttachments(files, onProgress);
     if (attachments.length) {
-      await updateDoc(doc(db, TICKET_COLLECTION, docRef.id), {
+      await updateDoc(doc(firestore, TICKET_COLLECTION, docRef.id), {
         attachments,
         updatedAt: new Date().toISOString(),
       });
     }
 
-    await addDoc(collection(db, NOTIFICATION_COLLECTION), {
+    await addDoc(collection(firestore, NOTIFICATION_COLLECTION), {
       type: "new-ticket",
       ticketId: docRef.id,
       toRole: "technician",
@@ -159,8 +161,9 @@ export function subscribeTicketsForUser(
     return () => {};
   }
 
+  const firestore = db as Firestore;
   const ticketQuery = query(
-    collection(db, TICKET_COLLECTION),
+    collection(firestore, TICKET_COLLECTION),
     where("userId", "==", userId),
     orderBy("createdAt", "desc"),
   );
@@ -195,8 +198,9 @@ export function subscribeTickets(
       return;
     }
     if (cancelled) return;
+    const firestore = db as Firestore;
     const ticketQuery = query(
-      collection(db, TICKET_COLLECTION),
+      collection(firestore, TICKET_COLLECTION),
       orderBy("createdAt", "desc"),
     );
     return onSnapshot(
@@ -234,18 +238,19 @@ export function subscribeTicketById(
       cancelled = true;
       return;
     }
-    let ticketRef = doc(db, TICKET_COLLECTION, ticketId);
+    const firestore = db as Firestore;
+    let ticketRef = doc(firestore, TICKET_COLLECTION, ticketId);
     let ticketSnap = await getDoc(ticketRef);
     if (!ticketSnap.exists()) {
       // Fallback: allow lookup by readableNo slug
       const fallbackQuery = query(
-        collection(db, TICKET_COLLECTION),
+        collection(firestore, TICKET_COLLECTION),
         where("readableNo", "==", ticketId),
       );
       const fallbackSnap = await getDocs(fallbackQuery);
       const first = fallbackSnap.docs[0];
       if (first) {
-        ticketRef = doc(db, TICKET_COLLECTION, first.id);
+        ticketRef = doc(firestore, TICKET_COLLECTION, first.id);
         ticketSnap = await getDoc(ticketRef);
       } else {
         onChange(null);
@@ -305,7 +310,8 @@ export async function updateTicketStatus(
   if (assignedTo !== undefined) {
     payload.assignedTo = assignedTo;
   }
-  await updateDoc(doc(db, TICKET_COLLECTION, ticketId), payload);
+  const firestore = db as Firestore;
+  await updateDoc(doc(firestore, TICKET_COLLECTION, ticketId), payload);
   return { ok: true };
 }
 
@@ -321,7 +327,8 @@ export async function getTicketById(ticketId: string) {
   if (!ensureFirebase()) {
     return { ok: false, error: "Firebase is not configured." };
   }
-  const snap = await getDoc(doc(db, TICKET_COLLECTION, ticketId));
+  const firestore = db as Firestore;
+  const snap = await getDoc(doc(firestore, TICKET_COLLECTION, ticketId));
   if (!snap.exists()) {
     return { ok: false, error: "Ticket not found." };
   }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, type Firestore } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/components/i18n-provider";
@@ -60,7 +60,8 @@ export default function SignupPage() {
       setSubmitting(true);
       const result = await createUserWithEmailAndPassword(auth, email, password);
       if (db) {
-        await setDoc(doc(db, "users", result.user.uid), {
+      const firestore = db as Firestore;
+      await setDoc(doc(firestore, "users", result.user.uid), {
           displayName,
           email,
           phone: "",

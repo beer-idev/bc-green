@@ -65,12 +65,12 @@ export default function TicketDetailPage() {
     );
   }
 
-  const steps = [
+  const steps: { key: TicketStatus; label: string }[] = [
     { key: "NEW", label: t("status.NEW") },
     { key: "CHECKING", label: t("status.CHECKING") },
     { key: "IN_PROGRESS", label: t("status.IN_PROGRESS") },
     { key: "DONE", label: t("status.DONE") },
-  ] as const;
+  ];
   const vehicle = getVehicleById(ticket.vehicleId);
   const repairDate = ticket.repairDate ?? ticket.createdAt;
   const categoryLabel =

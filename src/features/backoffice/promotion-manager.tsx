@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   updateDoc,
+  type Firestore,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,8 +67,9 @@ export default function PromotionManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
+    const firestore = db as Firestore;
     const promoQuery = query(
-      collection(db, "promotions"),
+      collection(firestore, "promotions"),
       orderBy("updatedAt", "desc"),
     );
     const unsubscribe = onSnapshot(promoQuery, (snapshot) => {
@@ -96,9 +98,10 @@ export default function PromotionManager() {
     setMessage("");
     setUploading(true);
     try {
+      const firestore = db as Firestore;
       const now = new Date().toISOString();
       const upload = await uploadLocalFile(imageFile, "promotions");
-      await addDoc(collection(db, "promotions"), {
+      await addDoc(collection(firestore, "promotions"), {
         title: { th: form.titleTh, en: form.titleEn },
         subtitle: { th: form.subtitleTh, en: form.subtitleEn },
         content: { th: form.contentTh, en: form.contentEn },
@@ -123,14 +126,16 @@ export default function PromotionManager() {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await deleteDoc(doc(db, "promotions", promoId));
+    const firestore = db as Firestore;
+    await deleteDoc(doc(firestore, "promotions", promoId));
   };
 
   const togglePublish = async (promo: PromotionItem) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    await updateDoc(doc(db, "promotions", promo.id), {
+    const firestore = db as Firestore;
+    await updateDoc(doc(firestore, "promotions", promo.id), {
       published: !promo.published,
       updatedAt: new Date().toISOString(),
     });

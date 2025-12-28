@@ -1,6 +1,6 @@
 "use client";
 
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, type Firestore } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 
 export type UserRole = "user" | "technician" | "admin";
@@ -13,7 +13,8 @@ export async function getCurrentProfile() {
   if (!user) {
     return null;
   }
-  const snap = await getDoc(doc(db, "users", user.uid));
+  const firestore = db as Firestore;
+  const snap = await getDoc(doc(firestore, "users", user.uid));
   if (!snap.exists()) {
     return null;
   }
