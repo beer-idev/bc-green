@@ -30,13 +30,17 @@ export default function BackofficeLayout({ children }: { children: ReactNode }) 
   const navItems: NavItem[] = [
     { href: "/bo/dashboard", label: t("backoffice.dashboard") },
     { href: "/bo/tickets", label: t("backoffice.tickets") },
+    { href: "/bo/announcements", label: t("backoffice.announcements") },
+    { href: "/bo/vehicles", label: t("backoffice.vehicles") },
     { href: "/bo/help/faq", label: t("backoffice.help"), match: "/bo/help" },
     { href: "/bo/promotions", label: t("backoffice.promotions") },
     { href: "/bo/users", label: t("backoffice.users") },
   ];
   const filteredNav =
     role === "technician"
-      ? navItems.filter((item) => ["/bo/dashboard", "/bo/tickets"].includes(item.href))
+      ? navItems.filter((item) =>
+          ["/bo/dashboard", "/bo/tickets"].includes(item.href),
+        )
       : navItems;
 
   useEffect(() => {

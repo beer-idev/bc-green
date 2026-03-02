@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query, type Firestore } from "firebase/firestore";
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  type Firestore,
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useI18n } from "@/components/i18n-provider";
+import { showErrorAlert, showSuccessAlert } from "@/lib/alerts";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { formatDateTime } from "@/lib/format";
 import type { UserProfile } from "@/types/user";
@@ -43,6 +50,8 @@ const roleLabels: Record<UserRole, { th: string; en: string }> = {
   admin: { th: "แอดมิน", en: "Admin" },
 };
 
+const PAGE_SIZE = 8;
+
 export default function UserManager() {
   const { lang } = useI18n();
   const [items, setItems] = useState<UserRow[]>([]);
@@ -51,6 +60,8 @@ export default function UserManager() {
   const [isModalOpen, setModalOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [queryText, setQueryText] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (!db || !isFirebaseConfigured) {
@@ -82,13 +93,42 @@ export default function UserManager() {
     return () => unsubscribe();
   }, [lang]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [queryText, items.length]);
+
+  const filteredRows = useMemo(() => {
+    const keyword = queryText.trim().toLowerCase();
+    if (!keyword) return items;
+    return items.filter((user) => {
+      const values = [
+        user.id,
+        user.displayName,
+        user.email,
+        user.phone,
+        user.role,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+      return values.some((value) => value.includes(keyword));
+    });
+  }, [items, queryText]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
   const handleSave = async () => {
     if (!db || !isFirebaseConfigured) {
-      setMessage(
+      const errorText =
         lang === "th"
           ? "Firebase ยังไม่พร้อมใช้งาน"
-          : "Firebase is not configured.",
-      );
+          : "Firebase is not configured.";
+      setMessage(errorText);
+      await showErrorAlert({ title: "Error", text: errorText });
       return;
     }
     setSaving(true);
@@ -99,30 +139,31 @@ export default function UserManager() {
       const phone = form.phone.trim();
       const isEditing = Boolean(editingId);
       if (!email) {
-        setMessage(
+        const text =
           lang === "th"
             ? "กรุณาใส่อีเมลผู้ใช้"
-            : "Please provide an email address.",
-        );
+            : "Please provide an email address.";
+        setMessage(text);
+        await showErrorAlert({ title: "Error", text });
         setSaving(false);
         return;
       }
       if (!isEditing) {
         if (!form.password) {
-          setMessage(
+          const text =
             lang === "th"
               ? "กรุณาใส่รหัสผ่าน"
-              : "Please provide a password.",
-          );
+              : "Please provide a password.";
+          setMessage(text);
+          await showErrorAlert({ title: "Error", text });
           setSaving(false);
           return;
         }
         if (form.password !== form.confirmPassword) {
-          setMessage(
-            lang === "th"
-              ? "รหัสผ่านไม่ตรงกัน"
-              : "Passwords do not match.",
-          );
+          const text =
+            lang === "th" ? "รหัสผ่านไม่ตรงกัน" : "Passwords do not match.";
+          setMessage(text);
+          await showErrorAlert({ title: "Error", text });
           setSaving(false);
           return;
         }
@@ -144,7 +185,7 @@ export default function UserManager() {
       try {
         data = (await response.json()) as { error?: string };
       } catch {
-        // Ignore JSON parse errors – handle via status below.
+        // Ignore JSON parse errors.
       }
       if (!response.ok) {
         throw new Error(data.error || response.statusText || "Unable to save user.");
@@ -152,10 +193,13 @@ export default function UserManager() {
       setForm(emptyForm);
       setEditingId(null);
       setModalOpen(false);
-      setMessage(lang === "th" ? "บันทึกข้อมูลผู้ใช้แล้ว" : "User saved.");
+      const successText = lang === "th" ? "บันทึกผู้ใช้แล้ว" : "User saved.";
+      setMessage(successText);
+      await showSuccessAlert({ title: successText });
     } catch (error) {
       const text = error instanceof Error ? error.message : "Unable to save user.";
       setMessage(text);
+      await showErrorAlert({ title: "Error", text });
     } finally {
       setSaving(false);
     }
@@ -180,8 +224,6 @@ export default function UserManager() {
     setMessage("");
   };
 
-  const rows = useMemo(() => items, [items]);
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -194,9 +236,11 @@ export default function UserManager() {
       </div>
 
       <Card className="space-y-3 overflow-hidden">
-        <div className="text-sm font-semibold text-[--text-strong]">
-          {lang === "th" ? "รายการผู้ใช้" : "User list"}
-        </div>
+        <Input
+          value={queryText}
+          onChange={(event) => setQueryText(event.target.value)}
+          placeholder={lang === "th" ? "ค้นหาผู้ใช้" : "Search users"}
+        />
         <div className="overflow-x-auto -mx-3 sm:mx-0">
           <table className="min-w-[720px] table-auto text-xs sm:w-full sm:min-w-0 sm:text-sm">
             <thead>
@@ -211,11 +255,9 @@ export default function UserManager() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((user) => (
+              {pagedRows.map((user) => (
                 <tr key={user.id} className="border-t border-emerald-100">
-                  <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {user.id}
-                  </td>
+                  <td className="py-2 pr-3 text-xs text-[--text-soft]">{user.id}</td>
                   <td className="py-2 pr-3">{user.displayName || "-"}</td>
                   <td className="py-2 pr-3">{user.email || "-"}</td>
                   <td className="py-2 pr-3">{user.phone || "-"}</td>
@@ -230,28 +272,49 @@ export default function UserManager() {
                     {user.updatedAt ? formatDateTime(user.updatedAt) : "-"}
                   </td>
                   <td className="py-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(user)}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => handleEdit(user)}>
                       {lang === "th" ? "แก้ไข" : "Edit"}
                     </Button>
                   </td>
                 </tr>
               ))}
-              {!rows.length ? (
+              {!pagedRows.length ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="py-3 text-xs text-[--text-soft]"
-                  >
+                  <td colSpan={7} className="py-3 text-xs text-[--text-soft]">
                     {lang === "th" ? "ยังไม่มีผู้ใช้" : "No users found."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[--text-soft]">
+          <div>
+            {lang === "th"
+              ? `แสดง ${filteredRows.length} รายการ`
+              : `${filteredRows.length} items`}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage <= 1}
+            >
+              {lang === "th" ? "ก่อนหน้า" : "Prev"}
+            </Button>
+            <span>
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage >= totalPages}
+            >
+              {lang === "th" ? "ถัดไป" : "Next"}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -331,9 +394,7 @@ export default function UserManager() {
                 );
               })}
             </Select>
-            {message ? (
-              <div className="text-xs text-emerald-700">{message}</div>
-            ) : null}
+            {message ? <div className="text-xs text-emerald-700">{message}</div> : null}
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleSave} disabled={saving}>
                 {saving ? "..." : lang === "th" ? "บันทึก" : "Save"}

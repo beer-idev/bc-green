@@ -20,29 +20,29 @@ import { useI18n } from "@/components/i18n-provider";
 import { showErrorAlert, showSuccessAlert } from "@/lib/alerts";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { formatDateTime } from "@/lib/format";
-import type { FaqItem } from "@/types/support";
+import type { AnnouncementItem } from "@/types/announcement";
 
 type FormState = {
-  questionTh: string;
-  answerTh: string;
-  questionEn: string;
-  answerEn: string;
-  tags: string;
+  titleTh: string;
+  detailTh: string;
+  titleEn: string;
+  detailEn: string;
+  date: string;
 };
 
 const emptyForm: FormState = {
-  questionTh: "",
-  answerTh: "",
-  questionEn: "",
-  answerEn: "",
-  tags: "",
+  titleTh: "",
+  detailTh: "",
+  titleEn: "",
+  detailEn: "",
+  date: "",
 };
 
 const PAGE_SIZE = 6;
 
-export default function FaqManager() {
+export default function AnnouncementManager() {
   const { lang } = useI18n();
-  const [items, setItems] = useState<FaqItem[]>([]);
+  const [items, setItems] = useState<AnnouncementItem[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -61,18 +61,30 @@ export default function FaqManager() {
       return;
     }
     const firestore = db as Firestore;
-    const faqQuery = query(
-      collection(firestore, "faqs"),
+    const announcementQuery = query(
+      collection(firestore, "announcements"),
       orderBy("updatedAt", "desc"),
     );
     const unsubscribe = onSnapshot(
-      faqQuery,
+      announcementQuery,
       (snapshot) => {
-        const data = snapshot.docs.map((docSnap) => ({
+      const data = snapshot.docs.map((docSnap) => {
+        const payload = docSnap.data() as Omit<AnnouncementItem, "id"> & {
+          source?: string;
+          seed?: boolean;
+        };
+        if (!payload.source && payload.seed !== true) {
+          void updateDoc(doc(firestore, "announcements", docSnap.id), {
+            source: "backoffice",
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        return {
           id: docSnap.id,
-          ...(docSnap.data() as Omit<FaqItem, "id">),
-        }));
-        setItems(data);
+          ...payload,
+        };
+      });
+      setItems(data);
       },
       (err) => setMessage(err.message),
     );
@@ -88,11 +100,11 @@ export default function FaqManager() {
     if (!keyword) return items;
     return items.filter((item) => {
       const values = [
-        item.question?.th,
-        item.question?.en,
-        item.answer?.th,
-        item.answer?.en,
-        item.tags?.join(", "),
+        item.title?.th,
+        item.title?.en,
+        item.detail?.th,
+        item.detail?.en,
+        item.date,
       ]
         .filter(Boolean)
         .map((value) => String(value).toLowerCase());
@@ -114,14 +126,14 @@ export default function FaqManager() {
     setModalOpen(true);
   };
 
-  const openEditModal = (faq: FaqItem) => {
-    setEditingId(faq.id);
+  const openEditModal = (announcement: AnnouncementItem) => {
+    setEditingId(announcement.id);
     setForm({
-      questionTh: faq.question.th ?? "",
-      answerTh: faq.answer.th ?? "",
-      questionEn: faq.question.en ?? "",
-      answerEn: faq.answer.en ?? "",
-      tags: faq.tags.join(", "),
+      titleTh: announcement.title?.th ?? "",
+      detailTh: announcement.detail?.th ?? "",
+      titleEn: announcement.title?.en ?? "",
+      detailEn: announcement.detail?.en ?? "",
+      date: announcement.date ?? "",
     });
     setMessage("");
     setModalOpen(true);
@@ -143,9 +155,16 @@ export default function FaqManager() {
       });
       return;
     }
-    if (!form.questionTh.trim() || !form.answerTh.trim()) {
+    const titleTh = form.titleTh.trim();
+    const titleEn = form.titleEn.trim();
+    const detailTh = form.detailTh.trim();
+    const detailEn = form.detailEn.trim();
+    const date = form.date.trim();
+    if (!titleTh || !detailTh || !date) {
       const errorText =
-        lang === "th" ? "กรุณากรอกคำถามและคำตอบ" : "Please fill in the FAQ.";
+        lang === "th"
+          ? "กรุณากรอกข้อมูลประกาศให้ครบ"
+          : "Please complete the announcement fields.";
       setMessage(errorText);
       await showErrorAlert({ title: "Error", text: errorText });
       return;
@@ -154,33 +173,32 @@ export default function FaqManager() {
     try {
       const firestore = db as Firestore;
       const now = new Date().toISOString();
-      const tags = form.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
       const payload = {
-        question: { th: form.questionTh, en: form.questionEn },
-        answer: { th: form.answerTh, en: form.answerEn },
-        tags,
+        title: { th: titleTh, en: titleEn || titleTh },
+        detail: { th: detailTh, en: detailEn || detailTh },
+        date,
+        published: true,
+        source: "backoffice",
         updatedAt: now,
       };
       if (editingId) {
-        await updateDoc(doc(firestore, "faqs", editingId), payload);
+        await updateDoc(doc(firestore, "announcements", editingId), payload);
       } else {
-        await addDoc(collection(firestore, "faqs"), {
+        await addDoc(collection(firestore, "announcements"), {
           ...payload,
-          published: true,
+          createdAt: now,
         });
       }
       await showSuccessAlert({
-        title: lang === "th" ? "บันทึก FAQ แล้ว" : "FAQ saved.",
+        title: lang === "th" ? "บันทึกประกาศแล้ว" : "Announcement saved.",
       });
       setForm(emptyForm);
       setEditingId(null);
       setModalOpen(false);
       setMessage("");
     } catch (error) {
-      const text = error instanceof Error ? error.message : "Unable to save FAQ.";
+      const text =
+        error instanceof Error ? error.message : "Unable to save announcement.";
       setMessage(text);
       await showErrorAlert({ title: "Error", text });
     } finally {
@@ -188,29 +206,30 @@ export default function FaqManager() {
     }
   };
 
-  const handleDelete = async (faqId: string) => {
+  const handleDelete = async (announcementId: string) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
     try {
       const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, "faqs", faqId));
+      await deleteDoc(doc(firestore, "announcements", announcementId));
       await showSuccessAlert({
-        title: lang === "th" ? "ลบ FAQ แล้ว" : "FAQ deleted.",
+        title: lang === "th" ? "ลบประกาศแล้ว" : "Announcement deleted.",
       });
     } catch (error) {
-      const text = error instanceof Error ? error.message : "Unable to delete FAQ.";
+      const text =
+        error instanceof Error ? error.message : "Unable to delete announcement.";
       await showErrorAlert({ title: "Error", text });
     }
   };
 
-  const togglePublish = async (faq: FaqItem) => {
+  const togglePublish = async (announcement: AnnouncementItem) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
     const firestore = db as Firestore;
-    await updateDoc(doc(firestore, "faqs", faq.id), {
-      published: !faq.published,
+    await updateDoc(doc(firestore, "announcements", announcement.id), {
+      published: !announcement.published,
       updatedAt: new Date().toISOString(),
     });
   };
@@ -220,43 +239,43 @@ export default function FaqManager() {
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-[--text-strong]">
-            {lang === "th" ? "รายการ FAQ" : "FAQ"}
+            {lang === "th" ? "รายการประกาศ" : "Announcements"}
           </div>
           <Button onClick={openAddModal}>
-            {lang === "th" ? "เพิ่ม FAQ" : "Add FAQ"}
+            {lang === "th" ? "เพิ่มประกาศ" : "Add announcement"}
           </Button>
         </div>
         <Input
           value={queryText}
           onChange={(event) => setQueryText(event.target.value)}
-          placeholder={lang === "th" ? "ค้นหา FAQ" : "Search FAQ"}
+          placeholder={lang === "th" ? "ค้นหาประกาศ" : "Search announcements"}
         />
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="min-w-[920px] table-auto text-xs sm:w-full sm:min-w-0 sm:text-sm">
+          <table className="min-w-[860px] table-auto text-xs sm:w-full sm:min-w-0 sm:text-sm">
             <thead>
               <tr className="text-left text-xs text-[--text-soft]">
-                <th className="pb-2">คำถาม</th>
-                <th className="pb-2">คำตอบ</th>
-                <th className="pb-2">แท็ก</th>
+                <th className="pb-2">วันที่</th>
+                <th className="pb-2">หัวข้อ</th>
+                <th className="pb-2">รายละเอียด</th>
                 <th className="pb-2">สถานะ</th>
                 <th className="pb-2">อัปเดต</th>
                 <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
-              {pagedItems.map((faq) => (
-                <tr key={faq.id} className="border-t border-emerald-100">
-                  <td className="py-2 pr-3">
-                    {lang === "th" ? faq.question.th : faq.question.en}
-                  </td>
+              {pagedItems.map((announcement) => (
+                <tr key={announcement.id} className="border-t border-emerald-100">
                   <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {lang === "th" ? faq.answer.th : faq.answer.en}
-                  </td>
-                  <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {faq.tags.join(", ") || "-"}
+                    {announcement.date}
                   </td>
                   <td className="py-2 pr-3">
-                    {faq.published === false
+                    {lang === "th" ? announcement.title.th : announcement.title.en}
+                  </td>
+                  <td className="py-2 pr-3 text-xs text-[--text-soft]">
+                    {lang === "th" ? announcement.detail.th : announcement.detail.en}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {announcement.published === false
                       ? lang === "th"
                         ? "ปิดการแสดงผล"
                         : "Hidden"
@@ -265,23 +284,25 @@ export default function FaqManager() {
                         : "Published"}
                   </td>
                   <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {faq.updatedAt ? formatDateTime(faq.updatedAt) : "-"}
+                    {announcement.updatedAt
+                      ? formatDateTime(announcement.updatedAt)
+                      : "-"}
                   </td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => openEditModal(faq)}
+                        onClick={() => openEditModal(announcement)}
                       >
                         {lang === "th" ? "แก้ไข" : "Edit"}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => togglePublish(faq)}
+                        onClick={() => togglePublish(announcement)}
                       >
-                        {faq.published === false
+                        {announcement.published === false
                           ? lang === "th"
                             ? "เผยแพร่"
                             : "Publish"
@@ -292,7 +313,7 @@ export default function FaqManager() {
                       <Button
                         size="sm"
                         variant="danger"
-                        onClick={() => handleDelete(faq.id)}
+                        onClick={() => handleDelete(announcement.id)}
                       >
                         {lang === "th" ? "ลบ" : "Delete"}
                       </Button>
@@ -306,7 +327,7 @@ export default function FaqManager() {
                     colSpan={6}
                     className="py-4 text-center text-xs text-[--text-soft]"
                   >
-                    {lang === "th" ? "ยังไม่มี FAQ" : "No FAQ yet."}
+                    {lang === "th" ? "ยังไม่มีประกาศ" : "No announcements yet."}
                   </td>
                 </tr>
               ) : null}
@@ -350,11 +371,11 @@ export default function FaqManager() {
               <div className="text-sm font-semibold text-[--text-strong]">
                 {editingId
                   ? lang === "th"
-                    ? "แก้ไข FAQ"
-                    : "Edit FAQ"
+                    ? "แก้ไขประกาศ"
+                    : "Edit announcement"
                   : lang === "th"
-                    ? "เพิ่ม FAQ ใหม่"
-                    : "Add FAQ"}
+                    ? "เพิ่มประกาศใหม่"
+                    : "Add announcement"}
               </div>
               <button
                 type="button"
@@ -365,41 +386,43 @@ export default function FaqManager() {
               </button>
             </div>
             <Input
-              value={form.questionTh}
+              type="date"
+              value={form.date}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, questionTh: event.target.value }))
+                setForm((prev) => ({ ...prev, date: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำถาม (TH)" : "Question (TH)"}
-            />
-            <Textarea
-              value={form.answerTh}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, answerTh: event.target.value }))
-              }
-              placeholder={lang === "th" ? "คำตอบ (TH)" : "Answer (TH)"}
             />
             <Input
-              value={form.questionEn}
+              value={form.titleTh}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, questionEn: event.target.value }))
+                setForm((prev) => ({ ...prev, titleTh: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำถาม (EN)" : "Question (EN)"}
+              placeholder={lang === "th" ? "หัวข้อประกาศ (TH)" : "Title (TH)"}
             />
             <Textarea
-              value={form.answerEn}
+              value={form.detailTh}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, answerEn: event.target.value }))
+                setForm((prev) => ({ ...prev, detailTh: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำตอบ (EN)" : "Answer (EN)"}
+              placeholder={lang === "th" ? "รายละเอียด (TH)" : "Detail (TH)"}
             />
             <Input
-              value={form.tags}
+              value={form.titleEn}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, tags: event.target.value }))
+                setForm((prev) => ({ ...prev, titleEn: event.target.value }))
               }
-              placeholder={lang === "th" ? "แท็ก (คั่นด้วย ,)" : "Tags (comma separated)"}
+              placeholder={lang === "th" ? "หัวข้อประกาศ (EN)" : "Title (EN)"}
             />
-            {message ? <div className="text-xs text-emerald-700">{message}</div> : null}
+            <Textarea
+              value={form.detailEn}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, detailEn: event.target.value }))
+              }
+              placeholder={lang === "th" ? "รายละเอียด (EN)" : "Detail (EN)"}
+            />
+            {message ? (
+              <div className="text-xs text-emerald-700">{message}</div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleSave} disabled={saving}>
                 {saving ? "..." : lang === "th" ? "บันทึก" : "Save"}

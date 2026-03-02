@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { put } from "@vercel/blob";
 
 export const runtime = "nodejs";
 
-const ALLOWED_FOLDERS = new Set(["tickets", "repairs", "promotions"]);
+const ALLOWED_FOLDERS = new Set(["tickets", "repairs", "promotions", "avatars"]);
 
 function toSafeFolder(value: string) {
   const trimmed = value.trim().toLowerCase();
@@ -20,6 +20,12 @@ function toSafeFilename(name: string) {
 }
 
 export async function POST(request: Request) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json(
+      { ok: false, error: "Missing Vercel Blob read/write token." },
+      { status: 500 },
+    );
+  }
   const formData = await request.formData();
   const file = formData.get("file");
   const folderValue = formData.get("folder");
@@ -33,19 +39,25 @@ export async function POST(request: Request) {
   }
 
   const filename = toSafeFilename(file.name);
-  const relativePath = path.posix.join("uploads", folder, filename);
-  const absoluteDir = path.join(process.cwd(), "public", "uploads", folder);
-  const absolutePath = path.join(process.cwd(), "public", relativePath);
+  const pathname = path.posix.join("uploads", folder, filename);
 
-  await mkdir(absoluteDir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(absolutePath, buffer);
+  try {
+    const blob = await put(pathname, file, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: file.type || "application/octet-stream",
+    });
 
-  return NextResponse.json({
-    ok: true,
-    url: `/${relativePath}`,
-    path: relativePath,
-    name: file.name,
-    type: file.type || "application/octet-stream",
-  });
+    return NextResponse.json({
+      ok: true,
+      url: blob.url,
+      path: blob.pathname,
+      name: file.name,
+      type: file.type || "application/octet-stream",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Upload failed.";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }

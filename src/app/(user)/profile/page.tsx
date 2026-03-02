@@ -15,17 +15,17 @@ export default function ProfilePage() {
       <div className="grid gap-3 md:grid-cols-3">
         <Link href="/profile/edit">
           <Card className="p-4 text-sm font-semibold text-[--text-strong]">
-            {t("profile.editName")}
+            {t("profile.editNameAction")}
           </Card>
         </Link>
         <Link href="/profile/password">
           <Card className="p-4 text-sm font-semibold text-[--text-strong]">
-            {t("profile.changePassword")}
+            {t("profile.changePasswordAction")}
           </Card>
         </Link>
         <Link href="/profile/address">
           <Card className="p-4 text-sm font-semibold text-[--text-strong]">
-            {t("profile.editAddress")}
+            {t("profile.editAddressAction")}
           </Card>
         </Link>
       </div>

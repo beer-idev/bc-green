@@ -74,14 +74,32 @@ export default function ProfileForm() {
   const displayName = displayValue(profile.displayName);
   const email = displayValue(profile.email);
   const phone = displayValue(profile.phone);
+  const initials =
+    displayName && displayName !== "-"
+      ? displayName
+          .split(" ")
+          .filter(Boolean)
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase()
+      : "BC";
 
   return (
     <div className="space-y-4">
       <Card className="flex flex-wrap items-center gap-4">
         <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-white/80 bg-white/80">
-          <div className="flex h-full w-full items-center justify-center text-xs font-semibold">
-            BC
-          </div>
+          {profile.avatarUrl ? (
+            <img
+              src={profile.avatarUrl}
+              alt={displayName}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xs font-semibold">
+              {initials}
+            </div>
+          )}
         </div>
         <div>
           <div className="text-lg font-semibold text-[--text-strong]">

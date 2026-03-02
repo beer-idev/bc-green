@@ -19,7 +19,10 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
         void signOut();
       }
       const nextPath = encodeURIComponent(pathname ?? "/");
-      router.replace(`/login?next=${nextPath}`);
+      const isBackoffice =
+        pathname?.startsWith("/bo") || pathname?.startsWith("/backoffice");
+      const loginPath = isBackoffice ? "/backoffice/login" : "/login";
+      router.replace(`${loginPath}?next=${nextPath}`);
     }
   }, [loading, user, pathname, router, signOut]);
 

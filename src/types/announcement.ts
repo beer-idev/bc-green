@@ -1,14 +1,10 @@
 import type { LocalizedText } from "@/types/locale";
 
-export type PromotionItem = {
+export type AnnouncementItem = {
   id: string;
   title: LocalizedText;
-  subtitle: LocalizedText;
-  content?: LocalizedText;
-  badge?: LocalizedText;
-  image: string;
-  startAt?: string;
-  endAt?: string;
+  detail: LocalizedText;
+  date: string;
   published?: boolean;
   source?: string;
   seed?: boolean;

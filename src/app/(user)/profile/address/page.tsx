@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { doc, onSnapshot, setDoc, updateDoc, type Firestore } from "firebase/firestore";
 import PageHeader from "@/components/sections/page-header";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import type { UserAddress } from "@/types/user";
 export default function ProfileAddressPage() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
+  const router = useRouter();
   const [address, setAddress] = useState<UserAddress | null>(null);
   const [initialAddress, setInitialAddress] = useState<UserAddress | null>(null);
   const [hasDoc, setHasDoc] = useState(false);
@@ -103,6 +105,7 @@ export default function ProfileAddressPage() {
 
   const handleCancel = () => {
     setAddress(initialAddress ?? emptyAddress);
+    router.push("/profile");
   };
 
   if (!user) {
@@ -120,7 +123,7 @@ export default function ProfileAddressPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={t("profile.editAddress")}
+        title={t("profile.editAddressAction")}
         subtitle={t("profile.subtitle")}
         backHref="/profile"
       />
@@ -142,7 +145,7 @@ export default function ProfileAddressPage() {
                 prev ? { ...prev, district: event.target.value } : prev,
               )
             }
-            placeholder={lang === "th" ? "เขต/อำเภอ" : "District"}
+          placeholder={lang === "th" ? "เขต/อำเภอ" : "District"}
           />
           <Input
             value={address.province}

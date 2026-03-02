@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { doc, onSnapshot, type Firestore } from "firebase/firestore";
 import PageHeader from "@/components/sections/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,13 +10,16 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/components/i18n-provider";
+import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import {
   subscribeTicketById,
   updateTicketStatus,
 } from "@/services/tickets";
 import type { TranslationKey } from "@/lib/i18n";
 import { formatDateTime } from "@/lib/format";
+import { getVehicleById } from "@/data/vehicles";
 import type { Ticket, TicketStatus } from "@/types/ticket";
+import type { VehicleItem } from "@/types/vehicle";
 
 const statusOptions: TicketStatus[] = [
   "NEW",
@@ -34,6 +38,8 @@ export default function BackofficeTicketDetailPage() {
   const [status, setStatus] = useState<TicketStatus>("NEW");
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [vehicle, setVehicle] = useState<VehicleItem | null>(null);
+  const [vehicleLoaded, setVehicleLoaded] = useState(false);
 
   useEffect(() => {
     if (!ticketId) {
@@ -52,6 +58,39 @@ export default function BackofficeTicketDetailPage() {
     );
     return () => unsubscribe();
   }, [ticketId]);
+
+  useEffect(() => {
+    if (!ticket?.vehicleId) {
+      return;
+    }
+    if (!db || !isFirebaseConfigured) {
+      setVehicle(getVehicleById(ticket.vehicleId) ?? null);
+      setVehicleLoaded(true);
+      return;
+    }
+    const firestore = db as Firestore;
+    const vehicleRef = doc(firestore, "vehicles", ticket.vehicleId);
+    const unsubscribe = onSnapshot(
+      vehicleRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setVehicle(null);
+          setVehicleLoaded(true);
+          return;
+        }
+        setVehicle({
+          id: snapshot.id,
+          ...(snapshot.data() as Omit<VehicleItem, "id">),
+        });
+        setVehicleLoaded(true);
+      },
+      () => {
+        setVehicle(null);
+        setVehicleLoaded(true);
+      },
+    );
+    return () => unsubscribe();
+  }, [ticket?.vehicleId]);
 
   if (error) {
     return <p className="text-sm text-rose-600">{error}</p>;
@@ -75,6 +114,7 @@ export default function BackofficeTicketDetailPage() {
 
   const categoryLabel =
     ticket.category === "repair" ? t("nav.repair") : ticket.category;
+  const repairDate = ticket.repairDate ?? ticket.createdAt;
 
   const isLocked = ticket.status === "DONE" || ticket.status === "CANCELLED";
 
@@ -107,6 +147,51 @@ export default function BackofficeTicketDetailPage() {
           </div>
           <p className="text-sm text-[--text-soft]">{ticket.description}</p>
         </div>
+        {vehicle ? (
+          <Card className="flex flex-wrap items-center gap-4 border-emerald-100 bg-white">
+            {vehicle.image ? (
+              <img
+                src={vehicle.image}
+                alt={vehicle.name}
+                className="h-20 w-28 rounded-2xl object-cover"
+              />
+            ) : (
+              <div className="flex h-20 w-28 items-center justify-center rounded-2xl bg-emerald-50 text-xs text-emerald-700">
+                {lang === "th" ? "ไม่มีรูป" : "No image"}
+              </div>
+            )}
+            <div className="space-y-1 text-xs text-[--text-soft]">
+              <div className="text-sm font-semibold text-[--text-strong]">
+                {lang === "th" ? "ชื่อรถและรุ่น" : "Vehicle"}
+              </div>
+              <div className="text-[--text-mid]">{vehicle.name}</div>
+              <div>
+                {lang === "th" ? "รหัสสินค้า" : "Code"}: {vehicle.code || "-"}
+              </div>
+              <div>
+                {lang === "th" ? "ระยะเวลาประกันสินค้า" : "Warranty"}:{" "}
+                {vehicle.warranty || "-"}
+              </div>
+            </div>
+          </Card>
+        ) : vehicleLoaded ? (
+          <div className="text-xs text-[--text-soft]">
+            {lang === "th" ? "ยังไม่มีข้อมูลรุ่นรถ" : "Vehicle info not found."}
+          </div>
+        ) : null}
+        <Card className="space-y-2 border-emerald-100 bg-white">
+          <div className="text-sm font-semibold text-emerald-700">
+            {lang === "th" ? "ข้อมูลงานซ่อม" : "Repair details"}
+          </div>
+          <div className="text-xs text-[--text-mid]">
+            {lang === "th" ? "วันที่แจ้งซ่อม" : "Repair date"}:{" "}
+            {formatDateTime(repairDate)}
+          </div>
+          <div className="text-xs text-[--text-mid]">
+            {lang === "th" ? "สถานะ" : "Status"}:{" "}
+            {t(`status.${ticket.status}` as TranslationKey)}
+          </div>
+        </Card>
         {ticket.attachments.length ? (
           <div className="space-y-2">
             <div className="text-xs font-semibold text-[--text-mid]">

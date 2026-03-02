@@ -1,48 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  addDoc,
   collection,
-  deleteDoc,
-  doc,
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
   type Firestore,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/auth/auth-provider";
 import { useI18n } from "@/components/i18n-provider";
 import { showErrorAlert, showSuccessAlert } from "@/lib/alerts";
-import { db, isFirebaseConfigured } from "@/lib/firebase/client";
+import { auth, db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { formatDateTime } from "@/lib/format";
-import type { FaqItem } from "@/types/support";
+import { uploadLocalFile } from "@/lib/uploads/client";
+import type { VehicleItem } from "@/types/vehicle";
 
 type FormState = {
-  questionTh: string;
-  answerTh: string;
-  questionEn: string;
-  answerEn: string;
-  tags: string;
+  name: string;
+  code: string;
+  warranty: string;
+  image: string;
 };
 
 const emptyForm: FormState = {
-  questionTh: "",
-  answerTh: "",
-  questionEn: "",
-  answerEn: "",
-  tags: "",
+  name: "",
+  code: "",
+  warranty: "",
+  image: "",
 };
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 8;
 
-export default function FaqManager() {
+export default function VehicleManager() {
   const { lang } = useI18n();
-  const [items, setItems] = useState<FaqItem[]>([]);
+  const { user, loading } = useAuth();
+  const [items, setItems] = useState<VehicleItem[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -50,6 +47,57 @@ export default function FaqManager() {
   const [message, setMessage] = useState("");
   const [queryText, setQueryText] = useState("");
   const [page, setPage] = useState(1);
+  const [serverReady, setServerReady] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const seededRef = useRef(false);
+  const serverReadyRef = useRef(false);
+
+  const imagePreview = useMemo(() => {
+    if (imageFile) {
+      return URL.createObjectURL(imageFile);
+    }
+    return imageUrl || form.image;
+  }, [imageFile, imageUrl, form.image]);
+
+  useEffect(() => {
+    if (!imageFile) return;
+    return () => {
+      URL.revokeObjectURL(imagePreview);
+    };
+  }, [imageFile, imagePreview]);
+
+  const callVehicleApi = async (
+    method: "POST" | "PATCH" | "DELETE",
+    payload: Record<string, unknown>,
+  ) => {
+    if (!auth?.currentUser) {
+      throw new Error(
+        lang === "th"
+          ? "กรุณาเข้าสู่ระบบใหม่อีกครั้ง"
+          : "Please sign in again.",
+      );
+    }
+    const token = await auth.currentUser.getIdToken();
+    const response = await fetch("/api/backoffice/vehicles", {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let data: { error?: string } = {};
+      try {
+        data = (await response.json()) as { error?: string };
+      } catch {
+        // ignore
+      }
+      throw new Error(data.error ?? "Request failed.");
+    }
+    return response.json().catch(() => ({}));
+  };
 
   useEffect(() => {
     if (!db || !isFirebaseConfigured) {
@@ -61,23 +109,47 @@ export default function FaqManager() {
       return;
     }
     const firestore = db as Firestore;
-    const faqQuery = query(
-      collection(firestore, "faqs"),
+    const vehicleQuery = query(
+      collection(firestore, "vehicles"),
       orderBy("updatedAt", "desc"),
     );
+    setServerReady(false);
+    serverReadyRef.current = false;
     const unsubscribe = onSnapshot(
-      faqQuery,
+      vehicleQuery,
+      { includeMetadataChanges: true },
       (snapshot) => {
+        if (snapshot.metadata.fromCache && !serverReadyRef.current) {
+          return;
+        }
         const data = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
-          ...(docSnap.data() as Omit<FaqItem, "id">),
+          ...(docSnap.data() as Omit<VehicleItem, "id">),
         }));
         setItems(data);
+        if (!serverReadyRef.current) {
+          serverReadyRef.current = true;
+          setServerReady(true);
+        }
+        if (
+          !seededRef.current &&
+          snapshot.empty &&
+          user &&
+          !loading
+        ) {
+          seededRef.current = true;
+          void seedDefaultVehicles();
+        }
       },
-      (err) => setMessage(err.message),
+      (err) => {
+        setMessage(err.message);
+        serverReadyRef.current = true;
+        setServerReady(true);
+        setItems([]);
+      },
     );
     return () => unsubscribe();
-  }, [lang]);
+  }, [lang, loading, user]);
 
   useEffect(() => {
     setPage(1);
@@ -87,18 +159,25 @@ export default function FaqManager() {
     const keyword = queryText.trim().toLowerCase();
     if (!keyword) return items;
     return items.filter((item) => {
-      const values = [
-        item.question?.th,
-        item.question?.en,
-        item.answer?.th,
-        item.answer?.en,
-        item.tags?.join(", "),
-      ]
+      const values = [item.name, item.code]
         .filter(Boolean)
         .map((value) => String(value).toLowerCase());
       return values.some((value) => value.includes(keyword));
     });
   }, [items, queryText]);
+
+  const seedDefaultVehicles = async () => {
+    try {
+      await callVehicleApi("POST", { action: "seed" });
+    } catch (error) {
+      const text =
+        error instanceof Error
+          ? error.message
+          : "Unable to seed vehicles.";
+      setMessage(text);
+      seededRef.current = false;
+    }
+  };
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -110,19 +189,22 @@ export default function FaqManager() {
   const openAddModal = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setImageFile(null);
+    setImageUrl("");
     setMessage("");
     setModalOpen(true);
   };
 
-  const openEditModal = (faq: FaqItem) => {
-    setEditingId(faq.id);
+  const openEditModal = (vehicle: VehicleItem) => {
+    setEditingId(vehicle.id);
     setForm({
-      questionTh: faq.question.th ?? "",
-      answerTh: faq.answer.th ?? "",
-      questionEn: faq.question.en ?? "",
-      answerEn: faq.answer.en ?? "",
-      tags: faq.tags.join(", "),
+      name: vehicle.name ?? "",
+      code: vehicle.code ?? "",
+      warranty: vehicle.warranty ?? "",
+      image: vehicle.image ?? "",
     });
+    setImageFile(null);
+    setImageUrl(vehicle.image ?? "");
     setMessage("");
     setModalOpen(true);
   };
@@ -143,44 +225,44 @@ export default function FaqManager() {
       });
       return;
     }
-    if (!form.questionTh.trim() || !form.answerTh.trim()) {
+    const name = form.name.trim();
+    const code = form.code.trim();
+    const warranty = form.warranty.trim();
+    if (!name) {
       const errorText =
-        lang === "th" ? "กรุณากรอกคำถามและคำตอบ" : "Please fill in the FAQ.";
+        lang === "th" ? "กรุณากรอกชื่อรุ่นรถ" : "Enter vehicle name.";
       setMessage(errorText);
       await showErrorAlert({ title: "Error", text: errorText });
       return;
     }
     setSaving(true);
     try {
-      const firestore = db as Firestore;
-      const now = new Date().toISOString();
-      const tags = form.tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-      const payload = {
-        question: { th: form.questionTh, en: form.questionEn },
-        answer: { th: form.answerTh, en: form.answerEn },
-        tags,
-        updatedAt: now,
-      };
-      if (editingId) {
-        await updateDoc(doc(firestore, "faqs", editingId), payload);
-      } else {
-        await addDoc(collection(firestore, "faqs"), {
-          ...payload,
-          published: true,
-        });
+      let finalImageUrl = imageUrl.trim() || form.image.trim();
+      if (imageFile) {
+        const upload = await uploadLocalFile(imageFile, "vehicles");
+        finalImageUrl = upload.url;
       }
+      const payload = {
+        id: editingId ?? undefined,
+        name,
+        code,
+        warranty,
+        image: finalImageUrl,
+        published: true,
+      };
+      await callVehicleApi(editingId ? "PATCH" : "POST", payload);
       await showSuccessAlert({
-        title: lang === "th" ? "บันทึก FAQ แล้ว" : "FAQ saved.",
+        title: lang === "th" ? "บันทึกรุ่นรถแล้ว" : "Vehicle saved.",
       });
       setForm(emptyForm);
+      setImageFile(null);
+      setImageUrl("");
       setEditingId(null);
       setModalOpen(false);
       setMessage("");
     } catch (error) {
-      const text = error instanceof Error ? error.message : "Unable to save FAQ.";
+      const text =
+        error instanceof Error ? error.message : "Unable to save vehicle.";
       setMessage(text);
       await showErrorAlert({ title: "Error", text });
     } finally {
@@ -188,30 +270,29 @@ export default function FaqManager() {
     }
   };
 
-  const handleDelete = async (faqId: string) => {
+  const handleDelete = async (vehicleId: string) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
     try {
-      const firestore = db as Firestore;
-      await deleteDoc(doc(firestore, "faqs", faqId));
+      await callVehicleApi("DELETE", { id: vehicleId });
       await showSuccessAlert({
-        title: lang === "th" ? "ลบ FAQ แล้ว" : "FAQ deleted.",
+        title: lang === "th" ? "ลบรุ่นรถแล้ว" : "Vehicle deleted.",
       });
     } catch (error) {
-      const text = error instanceof Error ? error.message : "Unable to delete FAQ.";
+      const text =
+        error instanceof Error ? error.message : "Unable to delete vehicle.";
       await showErrorAlert({ title: "Error", text });
     }
   };
 
-  const togglePublish = async (faq: FaqItem) => {
+  const togglePublish = async (vehicle: VehicleItem) => {
     if (!db || !isFirebaseConfigured) {
       return;
     }
-    const firestore = db as Firestore;
-    await updateDoc(doc(firestore, "faqs", faq.id), {
-      published: !faq.published,
-      updatedAt: new Date().toISOString(),
+    await callVehicleApi("PATCH", {
+      id: vehicle.id,
+      published: !vehicle.published,
     });
   };
 
@@ -220,43 +301,37 @@ export default function FaqManager() {
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-[--text-strong]">
-            {lang === "th" ? "รายการ FAQ" : "FAQ"}
+            {lang === "th" ? "รายการรุ่นรถ" : "Vehicles"}
           </div>
           <Button onClick={openAddModal}>
-            {lang === "th" ? "เพิ่ม FAQ" : "Add FAQ"}
+            {lang === "th" ? "เพิ่มรุ่นรถ" : "Add vehicle"}
           </Button>
         </div>
         <Input
           value={queryText}
           onChange={(event) => setQueryText(event.target.value)}
-          placeholder={lang === "th" ? "ค้นหา FAQ" : "Search FAQ"}
+          placeholder={lang === "th" ? "ค้นหารุ่นรถ" : "Search vehicles"}
         />
         <div className="overflow-x-auto -mx-3 sm:mx-0">
-          <table className="min-w-[920px] table-auto text-xs sm:w-full sm:min-w-0 sm:text-sm">
+          <table className="min-w-[720px] table-auto text-xs sm:w-full sm:min-w-0 sm:text-sm">
             <thead>
               <tr className="text-left text-xs text-[--text-soft]">
-                <th className="pb-2">คำถาม</th>
-                <th className="pb-2">คำตอบ</th>
-                <th className="pb-2">แท็ก</th>
+                <th className="pb-2">ชื่อรุ่น</th>
+                <th className="pb-2">รหัสรุ่น</th>
                 <th className="pb-2">สถานะ</th>
                 <th className="pb-2">อัปเดต</th>
                 <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
-              {pagedItems.map((faq) => (
-                <tr key={faq.id} className="border-t border-emerald-100">
-                  <td className="py-2 pr-3">
-                    {lang === "th" ? faq.question.th : faq.question.en}
-                  </td>
+              {pagedItems.map((vehicle) => (
+                <tr key={vehicle.id} className="border-t border-emerald-100">
+                  <td className="py-2 pr-3">{vehicle.name}</td>
                   <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {lang === "th" ? faq.answer.th : faq.answer.en}
-                  </td>
-                  <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {faq.tags.join(", ") || "-"}
+                    {vehicle.code || "-"}
                   </td>
                   <td className="py-2 pr-3">
-                    {faq.published === false
+                    {vehicle.published === false
                       ? lang === "th"
                         ? "ปิดการแสดงผล"
                         : "Hidden"
@@ -265,23 +340,23 @@ export default function FaqManager() {
                         : "Published"}
                   </td>
                   <td className="py-2 pr-3 text-xs text-[--text-soft]">
-                    {faq.updatedAt ? formatDateTime(faq.updatedAt) : "-"}
+                    {vehicle.updatedAt ? formatDateTime(vehicle.updatedAt) : "-"}
                   </td>
                   <td className="py-2">
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => openEditModal(faq)}
+                        onClick={() => openEditModal(vehicle)}
                       >
                         {lang === "th" ? "แก้ไข" : "Edit"}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => togglePublish(faq)}
+                        onClick={() => togglePublish(vehicle)}
                       >
-                        {faq.published === false
+                        {vehicle.published === false
                           ? lang === "th"
                             ? "เผยแพร่"
                             : "Publish"
@@ -292,7 +367,7 @@ export default function FaqManager() {
                       <Button
                         size="sm"
                         variant="danger"
-                        onClick={() => handleDelete(faq.id)}
+                        onClick={() => handleDelete(vehicle.id)}
                       >
                         {lang === "th" ? "ลบ" : "Delete"}
                       </Button>
@@ -300,13 +375,24 @@ export default function FaqManager() {
                   </td>
                 </tr>
               ))}
-              {!pagedItems.length ? (
+              {!serverReady ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={5}
                     className="py-4 text-center text-xs text-[--text-soft]"
                   >
-                    {lang === "th" ? "ยังไม่มี FAQ" : "No FAQ yet."}
+                    {lang === "th"
+                      ? "กำลังโหลดข้อมูล..."
+                      : "Loading vehicles..."}
+                  </td>
+                </tr>
+              ) : !pagedItems.length ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-4 text-center text-xs text-[--text-soft]"
+                  >
+                    {lang === "th" ? "ยังไม่มีรุ่นรถ" : "No vehicles yet."}
                   </td>
                 </tr>
               ) : null}
@@ -345,16 +431,16 @@ export default function FaqManager() {
 
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <Card className="w-full max-w-2xl space-y-3">
+          <Card className="w-full max-w-xl space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-[--text-strong]">
                 {editingId
                   ? lang === "th"
-                    ? "แก้ไข FAQ"
-                    : "Edit FAQ"
+                    ? "แก้ไขรุ่นรถ"
+                    : "Edit vehicle"
                   : lang === "th"
-                    ? "เพิ่ม FAQ ใหม่"
-                    : "Add FAQ"}
+                    ? "เพิ่มรุ่นรถใหม่"
+                    : "Add new vehicle"}
               </div>
               <button
                 type="button"
@@ -365,40 +451,49 @@ export default function FaqManager() {
               </button>
             </div>
             <Input
-              value={form.questionTh}
+              value={form.name}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, questionTh: event.target.value }))
+                setForm((prev) => ({ ...prev, name: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำถาม (TH)" : "Question (TH)"}
-            />
-            <Textarea
-              value={form.answerTh}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, answerTh: event.target.value }))
-              }
-              placeholder={lang === "th" ? "คำตอบ (TH)" : "Answer (TH)"}
+              placeholder={lang === "th" ? "ชื่อรุ่นรถ" : "Vehicle name"}
             />
             <Input
-              value={form.questionEn}
+              value={form.code}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, questionEn: event.target.value }))
+                setForm((prev) => ({ ...prev, code: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำถาม (EN)" : "Question (EN)"}
+              placeholder={lang === "th" ? "รหัสรุ่น (ถ้ามี)" : "Code (optional)"}
             />
             <Textarea
-              value={form.answerEn}
+              value={form.warranty}
               onChange={(event) =>
-                setForm((prev) => ({ ...prev, answerEn: event.target.value }))
+                setForm((prev) => ({ ...prev, warranty: event.target.value }))
               }
-              placeholder={lang === "th" ? "คำตอบ (EN)" : "Answer (EN)"}
-            />
-            <Input
-              value={form.tags}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, tags: event.target.value }))
+              placeholder={
+                lang === "th"
+                  ? "รายละเอียดการรับประกัน (ถ้ามี)"
+                  : "Warranty details (optional)"
               }
-              placeholder={lang === "th" ? "แท็ก (คั่นด้วย ,)" : "Tags (comma separated)"}
+              rows={4}
             />
+            <div className="space-y-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(event) =>
+                  setImageFile(event.target.files?.[0] ?? null)
+                }
+              />
+              {imagePreview ? (
+                <div className="overflow-hidden rounded-2xl border border-emerald-100 bg-white">
+                  <img
+                    src={imagePreview}
+                    alt="Vehicle preview"
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+            </div>
             {message ? <div className="text-xs text-emerald-700">{message}</div> : null}
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleSave} disabled={saving}>

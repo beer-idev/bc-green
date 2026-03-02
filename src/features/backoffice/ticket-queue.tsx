@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,14 @@ export default function TicketQueue({ items: initialItems }: TicketQueueProps) {
   const { t, lang } = useI18n();
   const [items, setItems] = useState<Ticket[]>(initialItems ?? []);
   const [error, setError] = useState("");
+
+  const ticketCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((ticket) => {
+      counts.set(ticket.userId, (counts.get(ticket.userId) ?? 0) + 1);
+    });
+    return counts;
+  }, [items]);
 
   useEffect(() => {
     if (initialItems) {
@@ -51,6 +59,11 @@ export default function TicketQueue({ items: initialItems }: TicketQueueProps) {
             </div>
             <div className="text-xs text-[--text-soft]">
               {ticket.readableNo} - {ticket.category}
+            </div>
+            <div className="text-xs text-[--text-soft]">
+              {lang === "th"
+                ? `ผู้ใช้งานรายนี้แจ้งซ่อม ${ticketCounts.get(ticket.userId) ?? 1} ครั้ง`
+                : `This user has ${ticketCounts.get(ticket.userId) ?? 1} tickets`}
             </div>
             {ticket.assignedTo ? (
               <div className="text-xs text-[--text-soft]">

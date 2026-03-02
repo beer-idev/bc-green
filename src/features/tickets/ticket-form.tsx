@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { doc, getDoc, type Firestore } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  type Firestore,
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +23,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { useI18n } from "@/components/i18n-provider";
 import { showErrorAlert, showSuccessAlert } from "@/lib/alerts";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
-import { vehicles } from "@/data/vehicles";
+import { vehicles, type VehicleOption } from "@/data/vehicles";
 import { createTicket } from "@/services/tickets";
 
 const ticketSchema = z.object({
@@ -31,24 +39,86 @@ export default function TicketForm() {
   const router = useRouter();
   const { user } = useAuth();
   const [files, setFiles] = useState<File[]>([]);
+  const [vehicleOptions, setVehicleOptions] = useState<VehicleOption[]>([]);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState<string>("");
   const [addressReady, setAddressReady] = useState(false);
   const [addressChecked, setAddressChecked] = useState(false);
 
+  const imagePreviews = useMemo(() => {
+    return files
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({ file, url: URL.createObjectURL(file) }));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((item) => URL.revokeObjectURL(item.url));
+    };
+  }, [imagePreviews]);
+
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
       repairDate: "",
-      vehicleId: vehicles[0]?.id ?? "",
+      vehicleId: "",
       description: "",
     },
   });
+
+  const selectedVehicleId = watch("vehicleId");
+
+  useEffect(() => {
+    if (!db || !isFirebaseConfigured) {
+      setVehicleOptions(vehicles);
+      return;
+    }
+    const firestore = db as Firestore;
+    const vehicleQuery = query(
+      collection(firestore, "vehicles"),
+      orderBy("name", "asc"),
+    );
+    const unsubscribe = onSnapshot(vehicleQuery, (snapshot) => {
+      const nextVehicles = snapshot.docs
+        .map((docSnap) => {
+          const data = docSnap.data() as Partial<VehicleOption> & {
+            published?: boolean;
+          };
+          if (data.published === false) {
+            return null;
+          }
+          return {
+            id: docSnap.id,
+            name: String(data.name ?? ""),
+            code: String(data.code ?? ""),
+            warranty: String(data.warranty ?? ""),
+            image: String(data.image ?? ""),
+          };
+        })
+        .filter((item): item is VehicleOption => Boolean(item?.name));
+      setVehicleOptions(nextVehicles);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!vehicleOptions.length) {
+      return;
+    }
+    const exists = vehicleOptions.some(
+      (vehicle) => vehicle.id === selectedVehicleId,
+    );
+    if (!exists) {
+      setValue("vehicleId", vehicleOptions[0].id, { shouldValidate: true });
+    }
+  }, [selectedVehicleId, setValue, vehicleOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +169,15 @@ export default function TicketForm() {
   const onSubmit = async (values: TicketFormValues) => {
     setMessage("");
     setProgress(0);
+    if (isFirebaseConfigured && vehicleOptions.length === 0) {
+      const text =
+        lang === "th"
+          ? "ยังไม่มีรุ่นรถในระบบ กรุณาเพิ่มใน backoffice ก่อน"
+          : "No vehicles found. Please add vehicles in backoffice.";
+      setMessage(text);
+      await showErrorAlert({ title: "Error", text });
+      return;
+    }
     if (!addressReady) {
       const text =
         lang === "th"
@@ -108,9 +187,11 @@ export default function TicketForm() {
       await showErrorAlert({ title: "Error", text });
       return;
     }
-    const selectedVehicle =
-      vehicles.find((vehicle) => vehicle.id === values.vehicleId) ?? vehicles[0];
-    const title = selectedVehicle?.name ?? values.vehicleId;
+    const selectedVehicle = vehicleOptions.find(
+      (vehicle) => vehicle.id === values.vehicleId,
+    );
+    const title =
+      selectedVehicle?.name ?? values.vehicleId ?? "Unknown vehicle";
     const result = await createTicket(
       {
         title,
@@ -143,11 +224,16 @@ export default function TicketForm() {
           {t("ticket.formTitle")}
         </h3>
         <p className="text-sm text-[--text-soft]">{t("ticket.formHint")}</p>
+        <p className="text-xs text-[--text-soft]">
+          {lang === "th"
+            ? "ช่องที่มีเครื่องหมาย * จำเป็นต้องกรอกให้ครบ มิฉะนั้นจะส่งคำร้องไม่ได้"
+            : "Fields marked with * are required to submit the ticket."}
+        </p>
       </div>
       <form className="space-y-3" onSubmit={handleSubmit(onSubmit)}>
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[--text-mid]">
-            {lang === "th" ? "วันที่แจ้งซ่อม" : "Repair date"}
+            {lang === "th" ? "วันที่แจ้งซ่อม" : "Repair date"} *
           </label>
           <Input type="date" {...register("repairDate")} />
           {errors.repairDate ? (
@@ -156,22 +242,29 @@ export default function TicketForm() {
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[--text-mid]">
-            {lang === "th" ? "รายการที่ซ่อม" : "Vehicle"}
+            {lang === "th" ? "รายการที่ซ่อม" : "Vehicle"} *
           </label>
           <Select {...register("vehicleId")}>
-            {vehicles.map((item) => (
+            {vehicleOptions.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
           </Select>
+          {!vehicleOptions.length && isFirebaseConfigured ? (
+            <p className="text-xs text-rose-600">
+              {lang === "th"
+                ? "ยังไม่มีรุ่นรถในระบบ กรุณาเพิ่มใน backoffice ก่อน"
+                : "No vehicles found. Please add vehicles in backoffice."}
+            </p>
+          ) : null}
           {errors.vehicleId ? (
             <p className="text-xs text-rose-600">{errors.vehicleId.message}</p>
           ) : null}
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold text-[--text-mid]">
-            {lang === "th" ? "สาเหตุที่แจ้งซ่อม" : "Issue detail"}
+            {lang === "th" ? "สาเหตุที่แจ้งซ่อม" : "Issue detail"} *
           </label>
           <Textarea
             {...register("description")}
@@ -202,6 +295,25 @@ export default function TicketForm() {
               {files.map((file) => file.name).join(", ")}
             </div>
           ) : null}
+          {imagePreviews.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {imagePreviews.map((item) => (
+                <div
+                  key={`${item.file.name}-${item.file.size}-${item.file.lastModified}`}
+                  className="overflow-hidden rounded-xl border border-emerald-100 bg-white"
+                >
+                  <img
+                    src={item.url}
+                    alt={item.file.name}
+                    className="h-32 w-full object-cover"
+                  />
+                  <div className="px-2 py-1 text-[10px] text-[--text-soft]">
+                    {item.file.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {progress > 0 ? (
             <div className="space-y-1">
               <div className="text-xs text-[--text-soft]">
@@ -227,7 +339,11 @@ export default function TicketForm() {
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <Button
             type="submit"
-            disabled={isSubmitting || (addressChecked && !addressReady)}
+            disabled={
+              isSubmitting ||
+              (addressChecked && !addressReady) ||
+              (isFirebaseConfigured && vehicleOptions.length === 0)
+            }
             className="bg-emerald-600 text-white hover:bg-emerald-700"
           >
             {isSubmitting ? "..." : t("actions.submit")}

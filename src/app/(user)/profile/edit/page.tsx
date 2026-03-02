@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { doc, onSnapshot, setDoc, updateDoc, type Firestore } from "firebase/firestore";
 import PageHeader from "@/components/sections/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,13 +12,16 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { db, isFirebaseConfigured } from "@/lib/firebase/client";
 import { buildProfileFromUser, emptyAddress } from "@/lib/user-profile";
 import { showErrorAlert, showSuccessAlert } from "@/lib/alerts";
+import { uploadLocalFile } from "@/lib/uploads/client";
 import type { UserProfile } from "@/types/user";
 
 export default function ProfileEditPage() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
+  const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [form, setForm] = useState<UserProfile | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [hasDoc, setHasDoc] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,6 +54,7 @@ export default function ProfileEditPage() {
         setHasDoc(snapshot.exists());
         if (!hydrated) {
           setForm(nextProfile);
+          setAvatarFile(null);
           setHydrated(true);
         }
       },
@@ -57,6 +62,20 @@ export default function ProfileEditPage() {
     );
     return () => unsubscribe();
   }, [user]);
+
+  const avatarPreview = useMemo(() => {
+    if (avatarFile) {
+      return URL.createObjectURL(avatarFile);
+    }
+    return form?.avatarUrl ?? "";
+  }, [avatarFile, form?.avatarUrl]);
+
+  useEffect(() => {
+    if (!avatarFile) return;
+    return () => {
+      URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarFile, avatarPreview]);
 
   const handleSave = async () => {
     if (!user || !form || !db || !isFirebaseConfigured) {
@@ -67,10 +86,16 @@ export default function ProfileEditPage() {
     try {
       const firestore = db as Firestore;
       const ref = doc(firestore, "users", user.uid);
+      let avatarUrl = form.avatarUrl;
+      if (avatarFile) {
+        const upload = await uploadLocalFile(avatarFile, "avatars");
+        avatarUrl = upload.url;
+      }
       const payload = {
         displayName: form.displayName.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
+        avatarUrl,
         updatedAt: new Date().toISOString(),
       };
       if (hasDoc) {
@@ -87,6 +112,7 @@ export default function ProfileEditPage() {
         title: t("actions.save"),
         text: lang === "th" ? "บันทึกข้อมูลเรียบร้อย" : "Profile saved.",
       });
+      setAvatarFile(null);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to save profile.";
@@ -101,6 +127,8 @@ export default function ProfileEditPage() {
     if (profile) {
       setForm(profile);
     }
+    setAvatarFile(null);
+    router.push("/profile");
   };
 
   if (!user) {
@@ -118,11 +146,38 @@ export default function ProfileEditPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={t("profile.editName")}
+        title={t("profile.editNameAction")}
         subtitle={t("profile.subtitle")}
         backHref="/profile"
       />
       <Card className="space-y-3">
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-[--text-mid]">
+            {lang === "th" ? "รูปโปรไฟล์" : "Profile photo"}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="h-20 w-20 overflow-hidden rounded-full border border-emerald-100 bg-white">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt={form.displayName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-[--text-soft]">
+                  {lang === "th" ? "ไม่มีรูป" : "No photo"}
+                </div>
+              )}
+            </div>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(event) =>
+                setAvatarFile(event.target.files?.[0] ?? null)
+              }
+            />
+          </div>
+        </div>
         <Input
           value={form.displayName}
           onChange={(event) =>
@@ -130,6 +185,7 @@ export default function ProfileEditPage() {
               prev ? { ...prev, displayName: event.target.value } : prev,
             )
           }
+          placeholder={t("auth.displayName")}
         />
         <Input
           value={form.phone}
@@ -138,6 +194,7 @@ export default function ProfileEditPage() {
               prev ? { ...prev, phone: event.target.value } : prev,
             )
           }
+          placeholder={t("fields.contactPhone")}
         />
         <Input
           value={form.email}
@@ -146,6 +203,7 @@ export default function ProfileEditPage() {
               prev ? { ...prev, email: event.target.value } : prev,
             )
           }
+          placeholder={t("auth.email")}
         />
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={saving}>
