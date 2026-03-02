@@ -153,14 +153,14 @@ export default function PromotionManager() {
 
   const openEditModal = (promo: PromotionItem) => {
     setEditingId(promo.id);
-    setForm({
-      titleTh: promo.title.th ?? "",
-      subtitleTh: promo.subtitle.th ?? "",
-      titleEn: promo.title.en ?? "",
-      subtitleEn: promo.subtitle.en ?? "",
-      contentTh: promo.content.th ?? "",
-      contentEn: promo.content.en ?? "",
-    });
+      setForm({
+        titleTh: promo.title.th ?? "",
+        subtitleTh: promo.subtitle.th ?? "",
+        titleEn: promo.title.en ?? "",
+        subtitleEn: promo.subtitle.en ?? "",
+        contentTh: promo.content?.th ?? "",
+        contentEn: promo.content?.en ?? "",
+      });
     setImageFile(null);
     setImageUrl(promo.image ?? "");
     setMessage("");

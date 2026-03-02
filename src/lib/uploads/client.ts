@@ -1,6 +1,6 @@
 "use client";
 
-type UploadFolder = "tickets" | "repairs" | "promotions" | "avatars";
+type UploadFolder = "tickets" | "repairs" | "promotions" | "avatars" | "vehicles";
 
 export type LocalUploadResult = {
   url: string;
