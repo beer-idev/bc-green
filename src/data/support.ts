@@ -77,21 +77,20 @@ export const faqs: FaqItem[] = [
 
 export const supportContacts: SupportContact[] = [
   {
-    id: "phone",
-    label: { th: "โทรศัพท์", en: "Phone" },
-    value: "02-609-5151",
-    href: "tel:026095151",
+    id: "company",
+    label: { th: "บริษัท", en: "Company" },
+    value: "BC Green world",
   },
   {
-    id: "line",
-    label: { th: "LINE Official", en: "LINE Official" },
-    value: "@bc.ebike",
-    href: "https://line.me/R/ti/p/@bc.ebike",
+    id: "phone",
+    label: { th: "โทรศัพท์", en: "Phone" },
+    value: "062 909 5151",
+    href: "tel:0629095151",
   },
   {
     id: "email",
     label: { th: "อีเมล", en: "Email" },
-    value: "support@bcservice.co",
-    href: "mailto:support@bcservice.co",
+    value: "contact.bcgreenworld@gmail.com",
+    href: "mailto:contact.bcgreenworld@gmail.com",
   },
 ];

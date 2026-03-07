@@ -22,5 +22,5 @@ export type SupportContact = {
   id: string;
   label: LocalizedText;
   value: string;
-  href: string;
+  href?: string;
 };

@@ -40,19 +40,34 @@ export default function SupportCards() {
           </div>
         </div>
         <div className="grid gap-2 text-sm text-[--text-mid] md:grid-cols-2">
-          {supportContacts.map((contact) => (
-            <a
-              key={contact.id}
-              href={contact.href}
-              className="flex items-center justify-between rounded-2xl border border-emerald-100 bg-white/70 px-3 py-2"
-            >
-              <span className="flex items-center gap-2">
-                <PhoneIcon size={16} className="text-emerald-600" />
-                {pick(contact.label)}
-              </span>
-              <span className="font-semibold">{contact.value}</span>
-            </a>
-          ))}
+          {supportContacts.map((contact) => {
+            const content = (
+              <>
+                <span className="flex items-center gap-2">
+                  <PhoneIcon size={16} className="text-emerald-600" />
+                  {pick(contact.label)}
+                </span>
+                <span className="font-semibold">{contact.value}</span>
+              </>
+            );
+
+            const className =
+              "flex items-center justify-between rounded-2xl border border-emerald-100 bg-white/70 px-3 py-2";
+
+            if (!contact.href) {
+              return (
+                <div key={contact.id} className={className}>
+                  {content}
+                </div>
+              );
+            }
+
+            return (
+              <a key={contact.id} href={contact.href} className={className}>
+                {content}
+              </a>
+            );
+          })}
         </div>
       </Card>
     </div>
